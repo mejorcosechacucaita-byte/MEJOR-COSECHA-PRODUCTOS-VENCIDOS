@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vencimientos · Mejor Cosecha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#EEF2EC; --surface:#FFFFFF; --ink:#18261D; --muted:#5B6B60; --line:#D5DDD3;
+  --field:#1F4A33; --field-ink:#FFFFFF;
+  --red:#C62F26; --red-soft:#FBE3E0;
+  --orange:#D9730D; --orange-soft:#FCEBD8;
+  --green:#2E7D4A; --green-soft:#E1F1E5;
+  --gray-soft:#E9ECE8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111812; --surface:#1A231C; --ink:#E7EEE8; --muted:#9AAA9F; --line:#2C3A30;
+    --field:#2F6B4A; --field-ink:#FFFFFF;
+    --red:#FF6B5E; --red-soft:#3A1E1B; --orange:#F2A14A; --orange-soft:#3A2A16;
+    --green:#6BC48A; --green-soft:#1C3324; --gray-soft:#242E27;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111812; --surface:#1A231C; --ink:#E7EEE8; --muted:#9AAA9F; --line:#2C3A30;
+  --field:#2F6B4A; --field-ink:#FFFFFF;
+  --red:#FF6B5E; --red-soft:#3A1E1B; --orange:#F2A14A; --orange-soft:#3A2A16;
+  --green:#6BC48A; --green-soft:#1C3324; --gray-soft:#242E27;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+.wrap{max-width:760px;margin:0 auto;padding:1rem 1rem 4rem}
+header{padding:.5rem 0 1rem}
+h1{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;margin:0;line-height:1.1}
+.sub{color:var(--muted);margin:.25rem 0 0;font-size:.95rem}
+
+.strip{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin:1rem 0}
+.stat{border:2px solid transparent;border-radius:10px;padding:.6rem .5rem;text-align:left;cursor:pointer;
+  font:inherit;color:var(--ink);background:var(--surface)}
+.stat b{display:block;font-size:1.6rem;font-weight:800;line-height:1}
+.stat span{font-size:.78rem;color:var(--muted)}
+.stat.red{background:var(--red-soft)} .stat.red b{color:var(--red)}
+.stat.orange{background:var(--orange-soft)} .stat.orange b{color:var(--orange)}
+.stat.green{background:var(--green-soft)} .stat.green b{color:var(--green)}
+.stat.gray{background:var(--gray-soft)}
+.stat[aria-pressed="true"]{border-color:var(--ink)}
+
+.alert{background:var(--red);color:#fff;border-radius:10px;padding:.8rem 1rem;margin-bottom:1rem}
+.alert p{margin:0 0 .3rem;font-weight:600}
+.alert ul{margin:0;padding-left:1.1rem;font-size:.92rem}
+
+.tools{display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);
+  border-radius:8px;padding:.55rem .65rem;min-width:0;width:100%}
+.tools input[type=search]{flex:1 1 200px;width:auto}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--field);color:var(--field-ink);border:0;border-radius:8px;padding:.6rem 1rem;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+
+.views{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:.75rem;width:max-content}
+.views button{background:var(--surface);color:var(--muted);border:0;padding:.45rem .9rem;font-weight:600}
+.views button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+.list{display:flex;flex-direction:column;gap:6px}
+.item{display:grid;grid-template-columns:6px 1fr auto;background:var(--surface);border-radius:8px;overflow:hidden}
+.bar{background:var(--gray-soft)}
+.red>.bar,.expired>.bar{background:var(--red)}
+.orange>.bar{background:var(--orange)}
+.green>.bar{background:var(--green)}
+.item.expired{background:var(--red-soft)}
+.main{padding:.6rem .75rem;min-width:0}
+.name{font-weight:600;overflow-wrap:anywhere}
+.meta{font-size:.85rem;color:var(--muted)}
+.side{padding:.6rem .75rem;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:.2rem}
+.date{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.red .date,.expired .date{color:var(--red)}
+.orange .date{color:var(--orange)}
+.green .date{color:var(--green)}
+.days{font-size:.8rem;color:var(--muted)}
+.actions{display:flex;gap:.25rem}
+.icon{background:none;border:0;color:var(--muted);padding:.2rem .35rem;border-radius:6px;font-size:.85rem;text-decoration:underline}
+.empty{text-align:center;color:var(--muted);padding:2rem 1rem;background:var(--surface);border-radius:8px}
+
+/* vista por producto */
+.group{display:grid;grid-template-columns:6px 1fr;background:var(--surface);border-radius:8px;overflow:hidden}
+.ghead{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;padding:.65rem .75rem .35rem}
+.gname{font-weight:800;font-size:1.05rem;overflow-wrap:anywhere}
+.gtotal{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.lots{padding:0 .75rem .5rem}
+.lot{display:grid;grid-template-columns:auto 1fr auto;gap:.6rem;align-items:center;padding:.4rem 0;border-top:1px solid var(--line);font-size:.9rem}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.lot.red .dot,.lot.expired .dot{background:var(--red)}
+.lot.orange .dot{background:var(--orange)}
+.lot.green .dot{background:var(--green)}
+.lot .lmeta{color:var(--muted);font-size:.8rem}
+.lot .qty{font-weight:600;font-variant-numeric:tabular-nums}
+.addlot{margin:.1rem 0 .1rem;padding:.3rem 0}
+
+dialog{border:0;border-radius:12px;padding:0;width:min(460px,94vw);max-height:92vh;background:var(--surface);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+form.sheet{padding:1.2rem;display:flex;flex-direction:column;gap:.75rem}
+form.sheet h2{margin:0;font-size:1.25rem}
+label{display:flex;flex-direction:column;gap:.25rem;font-size:.88rem;color:var(--muted)}
+.row{display:grid;grid-template-columns:1.3fr 1fr .8fr;gap:.5rem}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+fieldset{border:1px solid var(--line);border-radius:8px;padding:.6rem .7rem .7rem;margin:0}
+legend{font-size:.88rem;font-weight:600;padding:0 .3rem}
+.hint{font-size:.8rem;color:var(--muted);margin:.35rem 0 0}
+.btns{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.25rem}
+textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--ink);padding:.5rem}
+.foot{margin-top:1.5rem;font-size:.82rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.foot select{width:auto}
+.foot .icon{font-size:.82rem}
+@media (max-width:520px){
+  h1{font-size:1.55rem}
+  .stat b{font-size:1.3rem}
+  .stat span{font-size:.7rem}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Vencimientos de bodega</h1>
+    <p class="sub">Mejor Cosecha SAS. Cada llegada de mercancía se anota como un lote con su propia fecha.</p>
+  </header>
+
+  <div id="alert"></div>
+
+  <div class="strip" role="group" aria-label="Filtrar por estado">
+    <button class="stat red" data-f="red" aria-pressed="false"><b id="cRed">0</b><span>Lotes vencidos o ≤ 30 días</span></button>
+    <button class="stat orange" data-f="orange" aria-pressed="false"><b id="cOrange">0</b><span id="lOrange">Próximos</span></button>
+    <button class="stat green" data-f="green" aria-pressed="false"><b id="cGreen">0</b><span>Al día</span></button>
+    <button class="stat gray" data-f="none" aria-pressed="false"><b id="cNone">0</b><span>Sin fecha</span></button>
+  </div>
+
+  <div class="tools">
+    <input type="search" id="q" placeholder="Buscar producto o proveedor" aria-label="Buscar producto o proveedor">
+    <button class="btn" id="addBtn">Registrar llegada</button>
+  </div>
+
+  <div class="views" role="group" aria-label="Forma de ver la lista">
+    <button data-v="producto" aria-pressed="true">Por producto</button>
+    <button data-v="fecha" aria-pressed="false">Por fecha</button>
+  </div>
+
+  <div class="list" id="list"><div class="empty">Cargando productos…</div></div>
+
+  <div class="foot">
+    <span>Naranja cuando falten</span>
+    <select id="umbral" aria-label="Meses para marcar en naranja">
+      <option value="2">2 meses</option><option value="3">3 meses</option>
+      <option value="6" selected>6 meses</option><option value="12">12 meses</option>
+    </select>
+    <span>o menos.</span>
+    <button class="icon" id="notifBtn">Activar avisos del navegador</button>
+    <button class="icon" id="expBtn">Exportar / importar</button>
+  </div>
+</div>
+
+<datalist id="dlProductos"></datalist>
+<datalist id="dlProveedores"></datalist>
+
+<dialog id="dlg">
+  <form class="sheet" id="form" method="dialog">
+    <h2 id="dlgTitle">Registrar llegada</h2>
+    <label>Producto<input id="fNombre" list="dlProductos" required autocomplete="off" placeholder="Ej. Mancozeb x 500 gr"></label>
+    <label>Proveedor (empresa que lo trajo)<input id="fProv" list="dlProveedores" autocomplete="off" placeholder="Ej. Agrogama Colombia SAS"></label>
+    <div class="row2">
+      <label>Fecha de ingreso<input id="fIngreso" type="date"></label>
+      <label>Factura o remisión<input id="fDoc" autocomplete="off" placeholder="Ej. AGRO 13108"></label>
+    </div>
+    <div class="row2">
+      <label>Cantidad<input id="fCant" type="number" min="0" step="1" required inputmode="numeric"></label>
+      <label>Unidad
+        <select id="fUnidad"><option value="und">Unidades</option><option value="cajas">Cajas</option><option value="bultos">Bultos</option><option value="kg">Kg</option><option value="lt">Litros</option></select>
+      </label>
+    </div>
+    <fieldset>
+      <legend>Vencimiento</legend>
+      <div class="row">
+        <label>Mes<select id="fMes"><option value="">—</option></select></label>
+        <label>Año<input id="fAnio" type="number" min="2020" max="2050" placeholder="2028" inputmode="numeric"></label>
+        <label>Día<input id="fDia" type="number" min="1" max="31" placeholder="opc." inputmode="numeric"></label>
+      </div>
+      <p class="hint">Si no pones el día, se toma el último día del mes.</p>
+    </fieldset>
+    <label>Nota<input id="fNota" autocomplete="off"></label>
+    <div class="btns">
+      <button type="button" class="btn ghost" id="cancel">Cancelar</button>
+      <button type="submit" class="btn" id="save">Guardar lote</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgIO">
+  <form class="sheet" method="dialog">
+    <h2>Exportar / importar</h2>
+    <p class="hint">Copia este texto para guardar una copia o pasarlo a otra versión de la app. Para importar, pega el texto y toca Importar (se agrega a lo que ya tienes).</p>
+    <textarea id="ioText" aria-label="Datos en JSON"></textarea>
+    <div class="btns">
+      <button type="button" class="btn ghost" id="ioClose">Cerrar</button>
+      <button type="button" class="btn ghost" id="ioCopy">Copiar</button>
+      <button type="button" class="btn" id="ioImport">Importar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function(){
+  const MESES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const LS_KEY="vencimientos_productos_v1";
+  const $=id=>document.getElementById(id);
+  let items=[];   // lotes: {id,nombre,proveedor,ingreso,documento,cantidad,unidad,vence,nota}
+  let col=null;
+  let filter=null, editingId=null, view="producto";
+  let umbral=6;
+
+  try{const u=localStorage.getItem("venc_umbral"); if(u) umbral=+u;}catch(e){}
+  try{const v=localStorage.getItem("venc_vista"); if(v) view=v;}catch(e){}
+  $("umbral").value=String(umbral);
+  MESES.forEach((m,i)=>{const o=document.createElement("option");o.value=i+1;o.textContent=m[0].toUpperCase()+m.slice(1);$("fMes").appendChild(o);});
+
+  function today(){const d=new Date();d.setHours(0,0,0,0);return d;}
+  function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+  function parse(v){if(!v)return null;const [y,m,d]=v.split("-").map(Number);return new Date(y,m-1,d);}
+  function daysLeft(v){const d=parse(v);if(!d)return null;return Math.round((d-today())/86400000);}
+  function status(it){
+    const d=daysLeft(it.vence);
+    if(d===null)return "none";
+    if(d<0)return "expired";
+    if(d<=30)return "red";
+    const lim=new Date(today());lim.setMonth(lim.getMonth()+umbral);
+    return parse(it.vence)<=lim?"orange":"green";
+  }
+  const group=s=>s==="expired"?"red":s;
+  const RANK={expired:0,red:1,orange:2,green:3,none:4};
+  function fmt(v){const d=parse(v);if(!d)return "Sin fecha";return String(d.getDate()).padStart(2,"0")+" "+MESES[d.getMonth()].slice(0,3)+" "+d.getFullYear();}
+  function fmtShort(v){const d=parse(v);if(!d)return "";return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();}
+  function daysText(n){
+    if(n===null)return "Agrega la fecha";
+    if(n<0)return "Vencido hace "+(-n)+(n===-1?" día":" días");
+    if(n===0)return "Vence hoy";
+    if(n<=60)return "Faltan "+n+(n===1?" día":" días");
+    return "Faltan "+Math.floor(n/30.44)+" meses";
+  }
+  function qty(n,u){u=u||"und";if(u==="cajas"&&n===1)u="caja";if(u==="bultos"&&n===1)u="bulto";return n+" "+u;}
+  function esc(s){const d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML;}
+  function key(n){return (n||"").trim().toLowerCase().replace(/\s+/g," ");}
+  function byDate(a,b){
+    if(!a.vence&&!b.vence)return (a.nombre||"").localeCompare(b.nombre||"");
+    if(!a.vence)return 1;if(!b.vence)return -1;
+    return a.vence<b.vence?-1:a.vence>b.vence?1:(a.nombre||"").localeCompare(b.nombre||"");
+  }
+
+  function matches(it,q){
+    if(!q)return true;
+    return key(it.nombre).includes(q)||key(it.proveedor).includes(q)||key(it.documento).includes(q);
+  }
+
+  function lotMeta(it){
+    return [it.proveedor, it.ingreso?"llegó "+fmtShort(it.ingreso):"", it.documento, it.nota].filter(Boolean).map(esc).join(" / ");
+  }
+
+  function renderFecha(list){
+    return list.map(it=>{
+      const s=status(it),n=daysLeft(it.vence);
+      return `<div class="item ${s}"><div class="bar"></div>
+        <div class="main"><div class="name">${esc(it.nombre)}</div><div class="meta"><b>${esc(qty(it.cantidad,it.unidad))}</b>${lotMeta(it)?" / "+lotMeta(it):""}</div></div>
+        <div class="side"><div class="date">${fmt(it.vence)}</div><div class="days">${daysText(n)}</div>
+        <div class="actions"><button class="icon" data-edit="${esc(it.id)}">Editar</button><button class="icon" data-del="${esc(it.id)}">Borrar</button></div></div></div>`;
+    }).join("");
+  }
+
+  function renderProducto(list){
+    const map=new Map();
+    list.forEach(it=>{const k=key(it.nombre);if(!map.has(k))map.set(k,[]);map.get(k).push(it);});
+    const groups=[...map.values()].map(lots=>{
+      lots.sort(byDate);
+      const worst=lots.reduce((w,it)=>RANK[status(it)]<RANK[w]?status(it):w,"none");
+      return {name:lots[0].nombre,lots,worst,first:lots[0]};
+    });
+    groups.sort((a,b)=>RANK[a.worst]-RANK[b.worst]||byDate(a.first,b.first));
+    return groups.map(g=>{
+      const tot={};g.lots.forEach(it=>{const u=it.unidad||"und";tot[u]=(tot[u]||0)+(Number(it.cantidad)||0);});
+      const totTxt=Object.entries(tot).map(([u,n])=>qty(n,u)).join(" + ");
+      const lotsHtml=g.lots.map(it=>{
+        const s=status(it),n=daysLeft(it.vence);
+        return `<div class="lot ${s}"><span class="dot" aria-hidden="true"></span>
+          <div><span class="date">${fmt(it.vence)}</span> <span class="lmeta">${daysText(n)}</span>
+            <div class="lmeta">${lotMeta(it)}</div></div>
+          <div style="text-align:right"><div class="qty">${esc(qty(it.cantidad,it.unidad))}</div>
+            <div class="actions"><button class="icon" data-edit="${esc(it.id)}">Editar</button><button class="icon" data-del="${esc(it.id)}">Borrar</button></div></div></div>`;
+      }).join("");
+      return `<div class="group ${g.worst}"><div class="bar"></div><div>
+        <div class="ghead"><span class="gname">${esc(g.name)}</span><span class="gtotal">${esc(totTxt)}${g.lots.length>1?" en "+g.lots.length+" lotes":""}</span></div>
+        <div class="lots">${lotsHtml}<button class="icon addlot" data-addlot="${esc(g.name)}">Registrar otra llegada de este producto</button></div></div></div>`;
+    }).join("");
+  }
+
+  function render(){
+    const q=key($("q").value);
+    const counts={red:0,orange:0,green:0,none:0};
+    items.forEach(it=>counts[group(status(it))]++);
+    $("cRed").textContent=counts.red;$("cOrange").textContent=counts.orange;
+    $("cGreen").textContent=counts.green;$("cNone").textContent=counts.none;
+    $("lOrange").textContent="Vencen en "+umbral+" meses";
+    document.querySelectorAll(".stat").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.f===filter)));
+    document.querySelectorAll(".views button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===view)));
+
+    const sorted=items.slice().sort(byDate);
+    const shown=sorted.filter(it=>matches(it,q)&&(!filter||group(status(it))===filter));
+    const list=$("list");
+    if(!items.length)list.innerHTML='<div class="empty">Aún no hay lotes. Toca “Registrar llegada” para anotar el primero.</div>';
+    else if(!shown.length)list.innerHTML='<div class="empty">Ningún lote coincide con la búsqueda o el filtro.</div>';
+    else list.innerHTML=view==="producto"?renderProducto(shown):renderFecha(shown);
+
+    // listas para autocompletar
+    const prods=[...new Map(items.map(it=>[key(it.nombre),it.nombre])).values()].sort();
+    const provs=[...new Map(items.filter(it=>it.proveedor).map(it=>[key(it.proveedor),it.proveedor])).values()].sort();
+    $("dlProductos").innerHTML=prods.map(p=>`<option value="${esc(p)}">`).join("");
+    $("dlProveedores").innerHTML=provs.map(p=>`<option value="${esc(p)}">`).join("");
+
+    const urgent=sorted.filter(it=>group(status(it))==="red");
+    $("alert").innerHTML=urgent.length?`<div class="alert" role="alert"><p>${urgent.length===1?"1 lote vence":urgent.length+" lotes vencen"} en 30 días o menos</p><ul>${
+      urgent.slice(0,6).map(it=>`<li>${esc(it.nombre)} (${esc(qty(it.cantidad,it.unidad))}): ${fmt(it.vence)}, ${daysText(daysLeft(it.vence)).toLowerCase()}</li>`).join("")
+    }${urgent.length>6?"<li>y "+(urgent.length-6)+" más</li>":""}</ul></div>`:"";
+    maybeNotify(urgent);
+  }
+
+  // ---------- almacenamiento ----------
+  function saveLocal(){try{localStorage.setItem(LS_KEY,JSON.stringify(items));}catch(e){}}
+  function loadLocal(){try{const r=localStorage.getItem(LS_KEY);items=r?JSON.parse(r):[];}catch(e){items=[];}}
+  function newId(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+  function clean(it){return {nombre:it.nombre,proveedor:it.proveedor||"",ingreso:it.ingreso||"",documento:it.documento||"",
+    cantidad:Number(it.cantidad)||0,unidad:it.unidad||"und",vence:it.vence||"",nota:it.nota||""};}
+
+  async function upsert(it){
+    if(col){try{await col.doc(it.id).set(clean(it));return;}catch(e){alert("No se pudo guardar: "+(e.message||e.code));return;}}
+    const i=items.findIndex(x=>x.id===it.id); if(i>=0)items[i]=it; else items.push(it);
+    saveLocal();render();
+  }
+  async function remove(id){
+    if(col){try{await col.doc(id).delete();return;}catch(e){alert("No se pudo borrar: "+(e.message||e.code));return;}}
+    items=items.filter(x=>x.id!==id);saveLocal();render();
+  }
+
+  loadLocal(); render();
+  if(window.claude&&typeof window.claude.use==="function"){
+    window.claude.use("db").then(d=>{
+      if(!d)return;
+      col=d.collection("productos");
+      col.onSnapshot(snap=>{items=snap.docs.map(doc=>Object.assign({id:doc.id},doc.data()));render();},err=>console.warn(err));
+    }).catch(()=>{});
+  }
+
+  // ---------- formulario ----------
+  function openForm(it,presetName){
+    editingId=it?it.id:null;
+    $("dlgTitle").textContent=it?"Editar lote":"Registrar llegada";
+    $("save").textContent=it?"Guardar cambios":"Guardar lote";
+    const src=it||(presetName?items.filter(x=>key(x.nombre)===key(presetName)).sort((a,b)=>(b.ingreso||"").localeCompare(a.ingreso||""))[0]:null);
+    $("fNombre").value=it?it.nombre:(presetName||"");
+    $("fProv").value=src?(src.proveedor||""):"";
+    $("fIngreso").value=it?(it.ingreso||""):iso(today());
+    $("fDoc").value=it?(it.documento||""):"";
+    $("fCant").value=it?it.cantidad:"";
+    $("fUnidad").value=src?(src.unidad||"und"):"und";
+    $("fNota").value=it?(it.nota||""):"";
+    const d=it&&parse(it.vence);
+    $("fMes").value=d?String(d.getMonth()+1):"";
+    $("fAnio").value=d?d.getFullYear():"";
+    const last=d?new Date(d.getFullYear(),d.getMonth()+1,0).getDate():0;
+    $("fDia").value=d&&d.getDate()!==last?d.getDate():"";
+    $("dlg").showModal();
+    (presetName&&!it?$("fCant"):$("fNombre")).focus();
+  }
+  $("addBtn").onclick=()=>openForm(null);
+  $("cancel").onclick=()=>$("dlg").close();
+  $("form").addEventListener("submit",e=>{
+    e.preventDefault();
+    const mes=+$("fMes").value,anio=+$("fAnio").value,diaIn=+$("fDia").value;
+    let vence="";
+    if(mes&&anio){
+      const last=new Date(anio,mes,0).getDate();
+      const dia=diaIn?Math.min(diaIn,last):last;
+      vence=anio+"-"+String(mes).padStart(2,"0")+"-"+String(dia).padStart(2,"0");
+    }else if(mes||anio){alert("Pon el mes y el año del vencimiento, o deja los dos vacíos.");return;}
+    const nombre=$("fNombre").value.trim(); if(!nombre)return;
+    // usar el mismo nombre ya escrito antes si coincide (para agrupar bien)
+    const existing=items.find(x=>key(x.nombre)===key(nombre));
+    const it={id:editingId||newId(),nombre:existing?existing.nombre:nombre,proveedor:$("fProv").value.trim(),
+      ingreso:$("fIngreso").value,documento:$("fDoc").value.trim(),cantidad:Number($("fCant").value)||0,
+      unidad:$("fUnidad").value,vence,nota:$("fNota").value.trim()};
+    $("dlg").close();upsert(it);
+  });
+  $("list").addEventListener("click",e=>{
+    const ed=e.target.closest("[data-edit]"),dl=e.target.closest("[data-del]"),ad=e.target.closest("[data-addlot]");
+    if(ed)openForm(items.find(x=>x.id===ed.dataset.edit));
+    if(dl){const it=items.find(x=>x.id===dl.dataset.del);if(it&&confirm("¿Borrar este lote de "+it.nombre+" ("+qty(it.cantidad,it.unidad)+", vence "+fmt(it.vence)+")?"))remove(it.id);}
+    if(ad)openForm(null,ad.dataset.addlot);
+  });
+  document.querySelectorAll(".stat").forEach(b=>b.onclick=()=>{filter=filter===b.dataset.f?null:b.dataset.f;render();});
+  document.querySelectorAll(".views button").forEach(b=>b.onclick=()=>{view=b.dataset.v;try{localStorage.setItem("venc_vista",view);}catch(e){}render();});
+  $("q").oninput=render;
+  $("umbral").onchange=()=>{umbral=+$("umbral").value;try{localStorage.setItem("venc_umbral",umbral);}catch(e){}render();};
+
+  // ---------- avisos del navegador ----------
+  function canNotify(){return "Notification" in window;}
+  function updNotifBtn(){
+    if(!canNotify()){$("notifBtn").style.display="none";return;}
+    if(Notification.permission==="granted")$("notifBtn").textContent="Avisos del navegador activos";
+  }
+  $("notifBtn").onclick=async()=>{
+    if(!canNotify())return;
+    try{const p=await Notification.requestPermission();
+      if(p==="granted"){try{localStorage.removeItem("venc_notif_day");}catch(e){} render();}
+      else alert("El navegador no permitió los avisos aquí. La alerta roja arriba de la lista sigue funcionando.");
+    }catch(e){alert("Este navegador no permite avisos desde esta página.");}
+    updNotifBtn();
+  };
+  function maybeNotify(urgent){
+    if(!urgent.length||!canNotify()||Notification.permission!=="granted")return;
+    const k=new Date().toISOString().slice(0,10);
+    try{if(localStorage.getItem("venc_notif_day")===k)return;localStorage.setItem("venc_notif_day",k);}catch(e){}
+    try{new Notification("Lotes por vencer",{body:urgent.slice(0,4).map(it=>it.nombre+" ("+qty(it.cantidad,it.unidad)+"): "+fmt(it.vence)).join("\n")+(urgent.length>4?"\ny "+(urgent.length-4)+" más":"")});}catch(e){}
+  }
+  updNotifBtn();
+
+  // ---------- exportar / importar ----------
+  $("expBtn").onclick=()=>{$("ioText").value=JSON.stringify(items.map(clean),null,1);$("ioCopy").textContent="Copiar";$("dlgIO").showModal();};
+  $("ioClose").onclick=()=>$("dlgIO").close();
+  $("ioCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("ioText").value);$("ioCopy").textContent="Copiado";}catch(e){$("ioText").select();}};
+  $("ioImport").onclick=async()=>{
+    let arr;try{arr=JSON.parse($("ioText").value);}catch(e){alert("El texto no tiene el formato correcto.");return;}
+    if(!Array.isArray(arr)){alert("El texto debe ser una lista de lotes.");return;}
+    for(const r of arr){if(r&&r.nombre)await upsert(Object.assign(clean(r),{id:newId()}));}
+    $("dlgIO").close();
+  };
+})();
+</script>
+</body>
+</html>
