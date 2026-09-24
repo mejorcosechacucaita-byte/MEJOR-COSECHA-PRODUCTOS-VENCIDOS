@@ -88,11 +88,24 @@ button{font:inherit;cursor:pointer}
 .days{font-size:.8rem;color:var(--muted)}
 .actions{display:flex;gap:.25rem}
 .icon{background:none;border:0;color:var(--muted);padding:.2rem .35rem;border-radius:6px;font-size:.85rem;text-decoration:underline}
+.pager{display:flex;align-items:center;justify-content:center;gap:.6rem;padding:.6rem 0;color:var(--muted);font-size:.9rem}
+.pager button{background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:.4rem .8rem;font-weight:600}
+.pager button[disabled]{opacity:.4}
 .empty{text-align:center;color:var(--muted);padding:2rem 1rem;background:var(--surface);border-radius:8px}
 
 /* vista por producto */
 .group{display:grid;grid-template-columns:6px 1fr;background:var(--surface);border-radius:8px;overflow:hidden}
-.ghead{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;padding:.65rem .75rem .35rem}
+.ghead{display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.7rem .75rem;width:100%;
+  background:none;border:0;color:inherit;text-align:left;font:inherit}
+.ghead:hover{background:var(--gray-soft)}
+.gleft{min-width:0;display:flex;gap:.5rem;align-items:center}
+.chev{color:var(--muted);font-size:.9rem;transition:transform .15s}
+.group.open .chev{transform:rotate(90deg)}
+.gright{text-align:right;white-space:nowrap}
+.gdate{font-weight:700;font-size:.9rem;font-variant-numeric:tabular-nums}
+.group.red .gdate,.group.expired .gdate{color:var(--red)}
+.group.orange .gdate{color:var(--orange)}
+.group.green .gdate{color:var(--green)}
 .gname{font-weight:800;font-size:1.05rem;overflow-wrap:anywhere}
 .gtotal{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
 .lots{padding:0 .75rem .5rem}
@@ -160,7 +173,7 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     <button class="btn" id="addBtn">Registrar llegada</button>
   </div>
 
-  <div id="photoWrap" style="margin-bottom:.75rem;display:none">
+  <div id="photoWrap" style="margin-bottom:.75rem">
     <button class="btn ghost" id="photoBtn">Leer factura con foto</button>
     <span class="status" id="photoStatus"></span>
     <input type="file" id="photoInput" accept="image/*" multiple hidden>
@@ -259,6 +272,7 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
   let items=[];   // lotes: {id,nombre,proveedor,ingreso,documento,cantidad,unidad,vence,nota}
   let col=null;
   let filter=null, editingId=null, view="producto";
+  let page=1; const PAGE=10; const abiertos=new Set();
   let umbral=6;
 
   try{const u=localStorage.getItem("venc_umbral"); if(u) umbral=+u;}catch(e){}
@@ -308,39 +322,64 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
   }
 
   function renderFecha(list){
-    return list.map(it=>{
+    const total=list.length, pages=Math.max(1,Math.ceil(total/PAGE));
+    if(page>pages)page=pages;
+    return list.slice((page-1)*PAGE,page*PAGE).map(it=>{
       const s=status(it),n=daysLeft(it.vence);
       return `<div class="item ${s}"><div class="bar"></div>
         <div class="main"><div class="name">${esc(it.nombre)}</div><div class="meta"><b>${esc(qty(it.cantidad,it.unidad))}</b>${lotMeta(it)?" / "+lotMeta(it):""}</div></div>
         <div class="side"><div class="date">${fmt(it.vence)}</div><div class="days">${daysText(n)}</div>
         <div class="actions"><button class="icon" data-edit="${esc(it.id)}">Editar</button><button class="icon" data-del="${esc(it.id)}">Borrar</button></div></div></div>`;
-    }).join("");
+    }).join("")+pager(total,pages,"lotes");
   }
 
   function renderProducto(list){
     const map=new Map();
     list.forEach(it=>{const k=key(it.nombre);if(!map.has(k))map.set(k,[]);map.get(k).push(it);});
-    const groups=[...map.values()].map(lots=>{
+    let groups=[...map.values()].map(lots=>{
       lots.sort(byDate);
       const worst=lots.reduce((w,it)=>RANK[status(it)]<RANK[w]?status(it):w,"none");
-      return {name:lots[0].nombre,lots,worst,first:lots[0]};
+      return {k:key(lots[0].nombre),name:lots[0].nombre,lots,worst,first:lots[0]};
     });
     groups.sort((a,b)=>RANK[a.worst]-RANK[b.worst]||byDate(a.first,b.first));
-    return groups.map(g=>{
+    const total=groups.length;
+    const pages=Math.max(1,Math.ceil(total/PAGE));
+    if(page>pages)page=pages;
+    const slice=groups.slice((page-1)*PAGE,page*PAGE);
+    const html=slice.map(g=>{
       const tot={};g.lots.forEach(it=>{const u=it.unidad||"und";tot[u]=(tot[u]||0)+(Number(it.cantidad)||0);});
       const totTxt=Object.entries(tot).map(([u,n])=>qty(n,u)).join(" + ");
-      const lotsHtml=g.lots.map(it=>{
-        const s=status(it),n=daysLeft(it.vence);
-        return `<div class="lot ${s}"><span class="dot" aria-hidden="true"></span>
-          <div><span class="date">${fmt(it.vence)}</span> <span class="lmeta">${daysText(n)}</span>
+      const open=abiertos.has(g.k);
+      const prox=g.lots[0];
+      const rev=g.lots.some(it=>it.revisar)?'<span class="badge">revisar</span>':"";
+      const lotsHtml=!open?"":g.lots.map(it=>{
+        const s2=status(it),n=daysLeft(it.vence);
+        return `<div class="lot ${s2}"><span class="dot" aria-hidden="true"></span>
+          <div><span class="date">${fmt(it.vence)}</span>${badge(it)} <span class="lmeta">${daysText(n)}</span>
             <div class="lmeta">${lotMeta(it)}</div></div>
           <div style="text-align:right"><div class="qty">${esc(qty(it.cantidad,it.unidad))}</div>
             <div class="actions"><button class="icon" data-edit="${esc(it.id)}">Editar</button><button class="icon" data-del="${esc(it.id)}">Borrar</button></div></div></div>`;
-      }).join("");
-      return `<div class="group ${g.worst}"><div class="bar"></div><div>
-        <div class="ghead"><span class="gname">${esc(g.name)}</span><span class="gtotal">${esc(totTxt)}${g.lots.length>1?" en "+g.lots.length+" lotes":""}</span></div>
-        <div class="lots">${lotsHtml}<button class="icon addlot" data-addlot="${esc(g.name)}">Registrar otra llegada de este producto</button></div></div></div>`;
+      }).join("")+`<button class="icon addlot" data-addlot="${esc(g.name)}">Registrar otra llegada de este producto</button>`;
+      return `<div class="group ${g.worst}${open?" open":""}"><div class="bar"></div><div>
+        <button class="ghead" data-toggle="${esc(g.k)}" aria-expanded="${open}">
+          <span class="gleft"><span class="chev" aria-hidden="true">▶</span>
+            <span><span class="gname">${esc(g.name)}</span>${rev}
+              <div class="lmeta">${esc(totTxt)}${g.lots.length>1?" · "+g.lots.length+" lotes":""}</div></span></span>
+          <span class="gright"><span class="gdate">${fmt(prox.vence)}</span>
+            <div class="lmeta">${daysText(daysLeft(prox.vence))}</div></span>
+        </button>
+        ${open?`<div class="lots">${lotsHtml}</div>`:""}</div></div>`;
     }).join("");
+    return html+pager(total,pages,"productos");
+  }
+
+  function pager(total,pages,que){
+    if(total<=PAGE)return `<div class="pager">${total} ${que} en total</div>`;
+    const desde=(page-1)*PAGE+1, hasta=Math.min(page*PAGE,total);
+    return `<div class="pager">
+      <button data-page="ant" ${page<=1?"disabled":""}>‹ Anterior</button>
+      <span>${desde}–${hasta} de ${total} ${que}</span>
+      <button data-page="sig" ${page>=pages?"disabled":""}>Siguiente ›</button></div>`;
   }
 
   function render(){
@@ -450,10 +489,13 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     if(ed)openForm(items.find(x=>x.id===ed.dataset.edit));
     if(dl){const it=items.find(x=>x.id===dl.dataset.del);if(it&&confirm("¿Borrar este lote de "+it.nombre+" ("+qty(it.cantidad,it.unidad)+", vence "+fmt(it.vence)+")?"))remove(it.id);}
     if(ad)openForm(null,ad.dataset.addlot);
+    const tg=e.target.closest("[data-toggle]"),pg=e.target.closest("[data-page]");
+    if(tg&&!ed&&!dl&&!ad){const k=tg.dataset.toggle;abiertos.has(k)?abiertos.delete(k):abiertos.add(k);render();}
+    if(pg){page+=pg.dataset.page==="sig"?1:-1;if(page<1)page=1;render();window.scrollTo({top:0,behavior:"smooth"});}
   });
-  document.querySelectorAll(".stat").forEach(b=>b.onclick=()=>{filter=filter===b.dataset.f?null:b.dataset.f;render();});
-  document.querySelectorAll(".views button").forEach(b=>b.onclick=()=>{view=b.dataset.v;try{localStorage.setItem("venc_vista",view);}catch(e){}render();});
-  $("q").oninput=render;
+  document.querySelectorAll(".stat").forEach(b=>b.onclick=()=>{filter=filter===b.dataset.f?null:b.dataset.f;page=1;render();});
+  document.querySelectorAll(".views button").forEach(b=>b.onclick=()=>{view=b.dataset.v;page=1;try{localStorage.setItem("venc_vista",view);}catch(e){}render();});
+  $("q").oninput=()=>{page=1;render();};
   $("umbral").onchange=()=>{umbral=+$("umbral").value;try{localStorage.setItem("venc_umbral",umbral);}catch(e){}render();};
 
   // ---------- avisos del navegador ----------
@@ -477,6 +519,153 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     try{new Notification("Lotes por vencer",{body:urgent.slice(0,4).map(it=>it.nombre+" ("+qty(it.cantidad,it.unidad)+"): "+fmt(it.vence)).join("\n")+(urgent.length>4?"\ny "+(urgent.length-4)+" más":"")});}catch(e){}
   }
   updNotifBtn();
+
+  // ---------- leer factura con foto ----------
+  let sampler=null, revData=[];
+  if(window.claude&&typeof window.claude.use==="function"){
+    window.claude.use("sample").then(async sp=>{
+      if(!sp)return;
+      const lim=await sp.limits().catch(()=>null);
+      if(!lim||!lim.images)return;
+      sampler=sp;
+      $("photoInput").accept=lim.images.mediaTypes.join(",");
+      $("photoInput").dataset.max=lim.images.maxCount||1;
+      $("photoStatus").textContent="";
+    }).catch(()=>{});
+  }
+  $("photoBtn").onclick=()=>{
+    if(!sampler){alert("La lectura por foto solo funciona en la app de Claude y necesita unos segundos despues de abrir la pagina. Si acabas de abrirla, espera un momento y vuelve a tocar el boton. En la version de GitHub no esta disponible: en ese caso mandame la foto por el chat.");return;}
+    $("photoInput").click();
+  };
+  $("photoInput").onchange=async()=>{
+    const files=[...$("photoInput").files]; if(!files.length)return;
+    const max=+($("photoInput").dataset.max||1);
+    if(files.length>max){alert("Puedes mandar maximo "+max+" foto(s) a la vez.");$("photoInput").value="";return;}
+    $("photoStatus").textContent="Leyendo la foto...";
+    $("photoBtn").disabled=true;
+    const PROMPT=[
+      "Eres un asistente de bodega agricola en Colombia. En las imagenes hay una factura o cotizacion de insumos agricolas.",
+      "Cada renglon tiene el producto, la cantidad y el valor impresos. Junto a la descripcion hay fechas escritas A MANO con esfero:",
+      "esas fechas manuscritas son la FECHA DE VENCIMIENTO del producto y suelen venir como mes-anio (por ejemplo 04-2028) o dia-mes-anio.",
+      "Devuelve SOLO un JSON valido, sin texto antes ni despues, con esta forma:",
+      '{"proveedor":"","documento":"","lotes":[{"nombre":"","cantidad":0,"unidad":"und","anio":0,"mes":0,"dia":null,"nota":"","revisar":false}]}',
+      "Reglas: nombre es la descripcion del producto tal como aparece impresa. cantidad es el numero de la columna de cantidad.",
+      "unidad debe ser una de: und, cajas, bultos, kg, lt (usa und si no se especifica).",
+      "anio y mes son la fecha manuscrita de vencimiento; dia solo si esta escrito, si no null.",
+      "Si un renglon no tiene fecha manuscrita, o la letra no se entiende con seguridad, pon anio 0, mes 0 y revisar true,",
+      "y explica en nota que viste (por ejemplo: fecha borrosa, puede ser 04 u 08).",
+      "Si dudas entre dos lecturas de un numero, pon revisar true y dilo en nota. No inventes fechas.",
+      "proveedor es la empresa que emite el documento y documento es el numero de factura o el tipo de documento con su fecha."
+    ].join("\n");
+    try{
+      const out=await sampler.json(PROMPT,{images:files,modelTier:"complex"});
+      const lotes=(out&&out.lotes)||[];
+      if(!lotes.length)alert("No pude leer renglones en esa foto. Prueba con una foto mas cerca y bien iluminada.");
+      else openReview(lotes,out.proveedor||"",out.documento||"");
+    }catch(e){
+      const c=e&&e.code;
+      if(c==="not_granted")alert("No diste permiso para leer la foto.");
+      else if(c==="rate_limited")alert("Muchas lecturas seguidas. Espera un momento y vuelve a intentar.");
+      else alert("No pude leer la foto: "+((e&&e.message)||c||"error"));
+    }
+    $("photoStatus").textContent="";$("photoBtn").disabled=false;$("photoInput").value="";
+  };
+
+  function openReview(lotes,prov,doc){
+    revData=lotes.map(r=>({nombre:String(r.nombre||"").trim(),cantidad:Number(r.cantidad)||0,
+      unidad:["und","cajas","bultos","kg","lt"].includes(r.unidad)?r.unidad:"und",
+      anio:Number(r.anio)||0,mes:Number(r.mes)||0,dia:Number(r.dia)||0,
+      nota:String(r.nota||"").trim(),revisar:!!r.revisar}));
+    $("revProv").value=prov;$("revDoc").value=doc;$("revIngreso").value=iso(today());
+    const faltan=revData.filter(r=>!r.anio||!r.mes||r.revisar).length;
+    $("revHint").textContent="Lei "+revData.length+" renglones"+(faltan?". "+faltan+" quedaron sin fecha o con dudas: corrigelos aqui antes de guardar.":". Revisa que todo este bien antes de guardar.");
+    const mesOpts=n=>MESES.map((m,i)=>`<option value="${i+1}"${n===i+1?" selected":""}>${m[0].toUpperCase()+m.slice(1)}</option>`).join("");
+    $("revBox").innerHTML=revData.map((r,i)=>{
+      const falta=!r.anio||!r.mes||r.revisar;
+      return `<div class="rev ${falta?"falta":""}">
+        <div class="r1"><input type="checkbox" data-i="${i}" class="chk" checked style="width:auto">
+          <input class="fn" data-i="${i}" value="${esc(r.nombre)}" placeholder="Producto"></div>
+        <div class="r2"><input class="fq" data-i="${i}" type="number" min="0" value="${r.cantidad}" inputmode="numeric">
+          <select class="fu" data-i="${i}">${["und","cajas","bultos","kg","lt"].map(u=>`<option${u===r.unidad?" selected":""}>${u}</option>`).join("")}</select></div>
+        <div class="r3"><select class="fm" data-i="${i}"><option value="">Mes</option>${mesOpts(r.mes)}</select>
+          <input class="fy" data-i="${i}" type="number" placeholder="Anio" value="${r.anio||""}" inputmode="numeric">
+          <input class="fd" data-i="${i}" type="number" placeholder="Dia" value="${r.dia||""}" inputmode="numeric"></div>
+        ${r.nota?`<div class="lmeta">${esc(r.nota)}</div>`:""}
+      </div>`;
+    }).join("");
+    $("dlgRev").showModal();
+  }
+  $("revCancel").onclick=()=>$("dlgRev").close();
+  $("revSave").onclick=async()=>{
+    const prov=$("revProv").value.trim(),doc=$("revDoc").value.trim(),ing=$("revIngreso").value;
+    const get=(cls,i)=>$("revBox").querySelector("."+cls+"[data-i='"+i+"']");
+    let n=0;
+    for(let i=0;i<revData.length;i++){
+      if(!get("chk",i).checked)continue;
+      const nombre=get("fn",i).value.trim(); if(!nombre)continue;
+      const mes=+get("fm",i).value,anio=+get("fy",i).value,dia=+get("fd",i).value;
+      let vence="";
+      if(mes&&anio){const last=new Date(anio,mes,0).getDate();
+        vence=anio+"-"+String(mes).padStart(2,"0")+"-"+String(dia?Math.min(dia,last):last).padStart(2,"0");}
+      const ex=items.find(x=>key(x.nombre)===key(nombre));
+      await upsert({id:newId(),nombre:ex?ex.nombre:nombre,proveedor:prov,ingreso:ing,documento:doc,
+        cantidad:+get("fq",i).value||0,unidad:get("fu",i).value,vence,
+        nota:revData[i].nota,revisar:!vence||revData[i].revisar});
+      n++;
+    }
+    $("dlgRev").close();
+    page=1;render();
+    if(n)alert("Agregue "+n+" lotes. Los que quedaron marcados con revisar los puedes corregir con Editar.");
+  };
+
+  // ---------- exportar a Excel ----------
+  const COLORS={expired:["FFC62F26","FFFFFFFF","Vencido"],red:["FFF8CBC6","FF7A1710","Vence en 30 dias o menos"],
+    orange:["FFFCE2C0","FF8A4708","Proximo a vencer"],green:["FFDFF0E4","FF1C5231","Al dia"],none:["FFE9ECE8","FF4A554C","Sin fecha"]};
+  function loadScript(src){return new Promise((res,rej)=>{const el=document.createElement("script");el.src=src;el.onload=res;el.onerror=rej;document.head.appendChild(el);});}
+  async function entregar(filename,blob){
+    if(window.claude&&typeof window.claude.use==="function"){
+      const d=await window.claude.use("downloads").catch(()=>null);
+      if(d){try{await d.save({filename,data:blob});return true;}catch(e){if(e&&e.code==="declined")return false;}}
+    }
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);return true;
+  }
+  $("xlsBtn").onclick=async()=>{
+    const btn=$("xlsBtn");const txt=btn.textContent;btn.textContent="Armando el Excel...";btn.disabled=true;
+    try{
+      if(!window.ExcelJS)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js");
+      const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("Vencimientos");
+      ws.columns=[{header:"Estado",width:26},{header:"Producto",width:38},{header:"Cantidad",width:10},
+        {header:"Unidad",width:10},{header:"Vence",width:12},{header:"Dias restantes",width:14},
+        {header:"Proveedor",width:24},{header:"Ingreso",width:12},{header:"Documento",width:22},{header:"Nota",width:30}];
+      ws.getRow(1).font={bold:true,color:{argb:"FFFFFFFF"}};
+      ws.getRow(1).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1F4A33"}};
+      ws.autoFilter="A1:J1";ws.views=[{state:"frozen",ySplit:1}];
+      items.slice().sort(byDate).forEach(it=>{
+        const st=status(it),c=COLORS[st],n=daysLeft(it.vence);
+        const row=ws.addRow([(st==="green"?"● ":st==="none"?"● ":"● ")+c[2],it.nombre,it.cantidad,it.unidad||"und",
+          it.vence?fmtShort(it.vence):"",n===null?"":n,it.proveedor||"",it.ingreso?fmtShort(it.ingreso):"",
+          it.documento||"",(it.revisar?"REVISAR. ":"")+(it.nota||"")]);
+        row.eachCell(cell=>{cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:c[0]}};
+          cell.font={color:{argb:c[1]}};cell.alignment={vertical:"middle"};});
+        row.getCell(1).font={color:{argb:c[1]},bold:true};
+      });
+      const buf=await wb.xlsx.writeBuffer();
+      const ok=await entregar("vencimientos.xlsx",new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+      if(ok===false){btn.textContent=txt;btn.disabled=false;return;}
+    }catch(e){
+      const csv=["Estado,Producto,Cantidad,Unidad,Vence,Dias,Proveedor,Ingreso,Documento,Nota"].concat(
+        items.slice().sort(byDate).map(it=>{const st=status(it),n=daysLeft(it.vence);
+          return [COLORS[st][2],it.nombre,it.cantidad,it.unidad||"und",it.vence?fmtShort(it.vence):"",n===null?"":n,
+            it.proveedor||"",it.ingreso?fmtShort(it.ingreso):"",it.documento||"",it.nota||""]
+            .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",");})).join("\n");
+      await entregar("vencimientos.csv",new Blob(["\ufeff"+csv],{type:"text/csv"}));
+      alert("No pude armar el Excel con colores, asi que te baje la lista en CSV (se abre en Excel).");
+    }
+    btn.textContent=txt;btn.disabled=false;
+  };
+
 
   // ---------- exportar / importar ----------
   $("expBtn").onclick=()=>{$("ioText").value=JSON.stringify(items.map(clean),null,1);$("ioCopy").textContent="Copiar";$("dlgIO").showModal();};
