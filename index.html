@@ -174,9 +174,9 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
   </div>
 
   <div id="photoWrap" style="margin-bottom:.75rem">
-    <button class="btn ghost" id="photoBtn">Leer factura con foto</button>
+    <button class="btn ghost" id="photoBtn">Adjuntar factura (foto o PDF)</button>
     <span class="status" id="photoStatus"></span>
-    <input type="file" id="photoInput" accept="image/*" multiple hidden>
+    <input type="file" id="photoInput" accept="image/*,application/pdf,.pdf" multiple hidden>
   </div>
 
   <div class="views" role="group" aria-label="Forma de ver la lista">
@@ -196,6 +196,8 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     <button class="icon" id="notifBtn">Activar avisos del navegador</button>
     <button class="icon" id="xlsBtn">Exportar a Excel</button>
     <button class="icon" id="expBtn">Copia de seguridad</button>
+    <button class="icon" id="syncBtn">Conectar con Google Sheets</button>
+    <span class="status" id="syncStatus"></span>
   </div>
 </div>
 
@@ -247,6 +249,20 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     <div class="btns">
       <button type="button" class="btn ghost" id="revCancel">Cancelar</button>
       <button type="button" class="btn" id="revSave">Agregar seleccionados</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgSync">
+  <form class="sheet" method="dialog">
+    <h2>Sincronizar entre equipos</h2>
+    <p class="hint">Pega aquí la URL de la aplicación web de Google Apps Script (la que termina en /exec). Con eso, este equipo lee y escribe en tu hoja de Google y todos los equipos ven lo mismo.</p>
+    <label>URL de la aplicación web<input id="syncUrl" placeholder="https://script.google.com/macros/s/..../exec" autocomplete="off"></label>
+    <p class="hint" id="syncInfo"></p>
+    <div class="btns">
+      <button type="button" class="btn ghost" id="syncOff">Desconectar</button>
+      <button type="button" class="btn ghost" id="syncClose">Cerrar</button>
+      <button type="button" class="btn" id="syncSave">Conectar</button>
     </div>
   </form>
 </dialog>
@@ -304,6 +320,7 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     return "Faltan "+Math.floor(n/30.44)+" meses";
   }
   function qty(n,u){u=u||"und";if(u==="cajas"&&n===1)u="caja";if(u==="bultos"&&n===1)u="bulto";return n+" "+u;}
+  const badge=it=>it&&it.revisar?'<span class="badge">revisar</span>':"";
   function esc(s){const d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML;}
   function key(n){return (n||"").trim().toLowerCase().replace(/\s+/g," ");}
   function byDate(a,b){
@@ -417,16 +434,65 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
   function loadLocal(){try{const r=localStorage.getItem(LS_KEY);items=r?JSON.parse(r):[];}catch(e){items=[];}}
   function newId(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
   function clean(it){return {nombre:it.nombre,proveedor:it.proveedor||"",ingreso:it.ingreso||"",documento:it.documento||"",
-    cantidad:Number(it.cantidad)||0,unidad:it.unidad||"und",vence:it.vence||"",nota:it.nota||""};}
+    cantidad:Number(it.cantidad)||0,unidad:it.unidad||"und",vence:it.vence||"",nota:it.nota||"",revisar:!!it.revisar};}
+
+  // ---- sincronizacion con Google Sheets (Apps Script) ----
+  // Si prefieres dejarla fija en el archivo, escribe aqui la URL que termina en /exec:
+  const API_URL="";
+  let api=API_URL||"";
+  try{api=api||localStorage.getItem("venc_api")||"";}catch(e){}
+  let pend=[]; try{pend=JSON.parse(localStorage.getItem("venc_pend")||"[]");}catch(e){pend=[];}
+  const savePend=()=>{try{localStorage.setItem("venc_pend",JSON.stringify(pend));}catch(e){}};
+  function setSync(t){$("syncStatus").textContent=t;}
+  function apiCall(payload){
+    return fetch(api,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
+      .then(r=>r.json()).then(j=>{if(!j||!j.ok)throw new Error((j&&j.error)||"respuesta invalida");return j;});
+  }
+  async function enviarPendientes(){
+    while(pend.length){
+      const p=pend[0];
+      await apiCall(p);
+      pend.shift();savePend();
+    }
+  }
+  let sincronizando=false;
+  async function sincronizar(silencioso){
+    if(!api||col||sincronizando)return;
+    sincronizando=true;
+    if(!silencioso)setSync("Sincronizando...");
+    try{
+      await enviarPendientes();
+      const j=await apiCall({accion:"getAll"});
+      items=(j.lotes||[]).map(r=>({id:String(r.id),nombre:String(r.nombre||""),proveedor:r.proveedor||"",
+        ingreso:r.ingreso||"",documento:r.documento||"",cantidad:Number(r.cantidad)||0,unidad:r.unidad||"und",
+        vence:r.vence||"",nota:r.nota||"",revisar:r.revisar===true||r.revisar==="TRUE"||r.revisar==="true"}));
+      saveLocal();render();
+      const h=new Date();
+      setSync("En linea. Ultima sincronizacion "+String(h.getHours()).padStart(2,"0")+":"+String(h.getMinutes()).padStart(2,"0"));
+    }catch(e){
+      setSync("Sin conexion con Google. Se guarda en este equipo"+(pend.length?" ("+pend.length+" cambios por enviar)":"")+".");
+    }
+    sincronizando=false;
+  }
 
   async function upsert(it){
     if(col){try{await col.doc(it.id).set(clean(it));return;}catch(e){alert("No se pudo guardar: "+(e.message||e.code));return;}}
     const i=items.findIndex(x=>x.id===it.id); if(i>=0)items[i]=it; else items.push(it);
     saveLocal();render();
+    if(api){
+      const payload={accion:"guardar",lote:Object.assign({id:it.id},clean(it))};
+      try{await enviarPendientes();await apiCall(payload);setSync("En linea. Guardado en Google.");}
+      catch(e){pend.push(payload);savePend();setSync("Guardado aqui. Se enviara a Google cuando haya conexion ("+pend.length+" pendientes).");}
+    }
   }
   async function remove(id){
     if(col){try{await col.doc(id).delete();return;}catch(e){alert("No se pudo borrar: "+(e.message||e.code));return;}}
     items=items.filter(x=>x.id!==id);saveLocal();render();
+    if(api){
+      const payload={accion:"borrar",id};
+      try{await enviarPendientes();await apiCall(payload);}
+      catch(e){pend.push(payload);savePend();setSync("Borrado aqui. Se enviara a Google cuando haya conexion ("+pend.length+" pendientes).");}
+    }
   }
 
   const SEED=[{"nombre":"Verdict x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":48,"unidad":"und","vence":"2028-04-30","nota":"Verificar mes (04 u 08)"},{"nombre":"Verdict x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":8,"unidad":"und","vence":"2028-04-30","nota":""},{"nombre":"Pikaron x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2028-08-31","nota":"Verificar mes (04 u 08)"},{"nombre":"Tagegama x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2028-08-31","nota":"Verificar mes (04 u 08)"},{"nombre":"Tagegama x 1 lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2028-08-31","nota":"Verificar mes (04 u 08)"},{"nombre":"Cuprium x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":2,"unidad":"und","vence":"2028-08-31","nota":"Verificar mes (04 u 08)"},{"nombre":"Big Bang OD x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":24,"unidad":"und","vence":"2029-07-31","nota":""},{"nombre":"Sistoato 40 EC x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2028-04-30","nota":""},{"nombre":"Trabuko 50 EC x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":24,"unidad":"und","vence":"2027-04-30","nota":""},{"nombre":"Visado 720 SC x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2027-05-31","nota":""},{"nombre":"Aliado WG x 200 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":60,"unidad":"und","vence":"2028-07-31","nota":""},{"nombre":"Linear 20 SL x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":48,"unidad":"und","vence":"2027-06-30","nota":""},{"nombre":"Kasumex 20 SL x 1 lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2029-04-30","nota":""},{"nombre":"Solucab A 60 + TE x 200 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":30,"unidad":"und","vence":"2030-05-31","nota":""},{"nombre":"Algacab 100 x 1 kl","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":6,"unidad":"und","vence":"2031-03-31","nota":""},{"nombre":"Active K x 1 kl","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":24,"unidad":"und","vence":"2030-11-30","nota":""},{"nombre":"Crofft x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2028-07-31","nota":""},{"nombre":"Cletodim del Monte 240 EC x 1 lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":36,"unidad":"und","vence":"2029-03-31","nota":""},{"nombre":"Abamectina x 1 lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":36,"unidad":"und","vence":"2029-04-30","nota":""},{"nombre":"Clorfenapyr del Monte 240 SC x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":12,"unidad":"und","vence":"2028-03-31","nota":""},{"nombre":"Disper Cu Sinergy x 1 kl","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":5,"unidad":"und","vence":"2031-03-31","nota":""},{"nombre":"Disper ZM Sinergy x 1 kl","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":10,"unidad":"und","vence":"2030-12-31","nota":""},{"nombre":"Disper Vegamino x 1 kl","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":5,"unidad":"und","vence":"2030-03-31","nota":""},{"nombre":"Disper Complex GS x 1 kl","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":10,"unidad":"und","vence":"2031-04-30","nota":""},{"nombre":"Alertum x 1 lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":36,"unidad":"und","vence":"2029-09-30","nota":""},{"nombre":"Sukoy x 200 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":24,"unidad":"und","vence":"2027-05-31","nota":""},{"nombre":"Propineb 70% WP x 400 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":200,"unidad":"und","vence":"","nota":"Sin fecha en la factura"},{"nombre":"Thiamethoxam Top x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":36,"unidad":"und","vence":"2028-04-30","nota":""},{"nombre":"Galvioni x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":96,"unidad":"und","vence":"2027-05-31","nota":""},{"nombre":"Galvioni x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":24,"unidad":"und","vence":"2027-05-31","nota":""},{"nombre":"Mancoz + Cymoxa 72% WP x 500 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":200,"unidad":"und","vence":"2028-08-31","nota":""},{"nombre":"Predostar 250 WP x 300 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":200,"unidad":"und","vence":"2027-04-30","nota":"Hay otro lote que vence 09-2027"},{"nombre":"Paraquat 200 SL x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-18","documento":"Factura AGRO 13108","cantidad":24,"unidad":"und","vence":"2028-01-31","nota":""},{"nombre":"Fosetyl x 330 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":20,"unidad":"und","vence":"2027-07-31","nota":"Hay un 24 escrito a mano al lado"},{"nombre":"Evil 1,8 EC x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":12,"unidad":"und","vence":"2028-06-30","nota":""},{"nombre":"Evil 1,8 EC x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":22,"unidad":"und","vence":"2027-04-30","nota":""},{"nombre":"Berkut 480 SL x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":12,"unidad":"und","vence":"2028-03-31","nota":""},{"nombre":"Hongomilo 50 WP x 100 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":50,"unidad":"und","vence":"2027-12-31","nota":"Mes tachado, verificar"},{"nombre":"Ixotirn 50 EC x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":24,"unidad":"und","vence":"2027-07-31","nota":""},{"nombre":"Propowor 722 SL x lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":60,"unidad":"und","vence":"2027-08-31","nota":""},{"nombre":"Propineb 70 WP x 400 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":280,"unidad":"und","vence":"2028-02-29","nota":""},{"nombre":"Nifun 720 WP x 375 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":40,"unidad":"und","vence":"2028-07-31","nota":""},{"nombre":"Duofun 72 WP x 500 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":360,"unidad":"und","vence":"2028-05-31","nota":""},{"nombre":"Cipertrin 200 EC x 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":24,"unidad":"und","vence":"2028-02-29","nota":""},{"nombre":"Maestro 50 WP x 500 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":90,"unidad":"und","vence":"2027-06-10","nota":""},{"nombre":"Activ 80 DS","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":45,"unidad":"und","vence":"","nota":"Sin fecha en la cotización"},{"nombre":"Alitron 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":5,"unidad":"und","vence":"2028-03-31","nota":""},{"nombre":"Clineex K 250 cc","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":5,"unidad":"und","vence":"2028-04-30","nota":""},{"nombre":"Disper Size","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":10,"unidad":"und","vence":"2030-12-31","nota":""},{"nombre":"Disper MG","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":10,"unidad":"und","vence":"","nota":"Sin fecha en la cotización"},{"nombre":"Glifocida x 1 lt","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":24,"unidad":"und","vence":"2027-01-31","nota":""},{"nombre":"Dimethomor x 120 gr","proveedor":"Agrogama Colombia SAS","ingreso":"2026-09-19","documento":"Cotización 19/09/2026","cantidad":13,"unidad":"cajas","vence":"2027-08-31","nota":""}];
@@ -436,7 +502,14 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     saveLocal();
   }
   render();
+  if(api&&!(window.claude&&typeof window.claude.use==="function")){
+    $("syncBtn").textContent="Sincronización con Google";
+    sincronizar();
+    setInterval(()=>{if(!document.hidden)sincronizar(true);},15000);
+    document.addEventListener("visibilitychange",()=>{if(!document.hidden)sincronizar(true);});
+  }
   if(window.claude&&typeof window.claude.use==="function"){
+    $("syncBtn").style.display="none";
     window.claude.use("db").then(d=>{
       if(!d)return;
       col=d.collection("productos");
@@ -481,7 +554,7 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     const existing=items.find(x=>key(x.nombre)===key(nombre));
     const it={id:editingId||newId(),nombre:existing?existing.nombre:nombre,proveedor:$("fProv").value.trim(),
       ingreso:$("fIngreso").value,documento:$("fDoc").value.trim(),cantidad:Number($("fCant").value)||0,
-      unidad:$("fUnidad").value,vence,nota:$("fNota").value.trim()};
+      unidad:$("fUnidad").value,vence,nota:$("fNota").value.trim(),revisar:false};
     $("dlg").close();upsert(it);
   });
   $("list").addEventListener("click",e=>{
@@ -528,7 +601,7 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
       const lim=await sp.limits().catch(()=>null);
       if(!lim||!lim.images)return;
       sampler=sp;
-      $("photoInput").accept=lim.images.mediaTypes.join(",");
+      $("photoInput").accept=lim.images.mediaTypes.join(",")+",application/pdf,.pdf";
       $("photoInput").dataset.max=lim.images.maxCount||1;
       $("photoStatus").textContent="";
     }).catch(()=>{});
@@ -537,12 +610,48 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     if(!sampler){alert("La lectura por foto solo funciona en la app de Claude y necesita unos segundos despues de abrir la pagina. Si acabas de abrirla, espera un momento y vuelve a tocar el boton. En la version de GitHub no esta disponible: en ese caso mandame la foto por el chat.");return;}
     $("photoInput").click();
   };
+  async function pdfAImagenes(file,max){
+    if(!window.pdfjsLib){
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+      try{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}catch(e){}
+    }
+    const buf=await file.arrayBuffer();
+    const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+    const out=[];
+    for(let p=1;p<=Math.min(pdf.numPages,max);p++){
+      const pg=await pdf.getPage(p);
+      const vp=pg.getViewport({scale:2});
+      const c=document.createElement("canvas");
+      c.width=Math.min(vp.width,2000);c.height=Math.round(vp.height*(c.width/vp.width));
+      const sc=c.width/vp.width;
+      await pg.render({canvasContext:c.getContext("2d"),viewport:pg.getViewport({scale:2*sc})}).promise;
+      out.push(await new Promise(r=>c.toBlob(r,"image/jpeg",0.85)));
+    }
+    return out;
+  }
+
   $("photoInput").onchange=async()=>{
-    const files=[...$("photoInput").files]; if(!files.length)return;
+    const sel=[...$("photoInput").files]; if(!sel.length)return;
     const max=+($("photoInput").dataset.max||1);
-    if(files.length>max){alert("Puedes mandar maximo "+max+" foto(s) a la vez.");$("photoInput").value="";return;}
-    $("photoStatus").textContent="Leyendo la foto...";
     $("photoBtn").disabled=true;
+    let files=[];
+    try{
+      for(const f of sel){
+        if(f.type==="application/pdf"||/\.pdf$/i.test(f.name)){
+          $("photoStatus").textContent="Abriendo el PDF...";
+          files=files.concat(await pdfAImagenes(f,max));
+        }else files.push(f);
+      }
+    }catch(e){
+      alert("No pude abrir ese PDF. Toma una foto o un pantallazo de la factura y subela como imagen.");
+      $("photoStatus").textContent="";$("photoBtn").disabled=false;$("photoInput").value="";return;
+    }
+    if(!files.length){$("photoStatus").textContent="";$("photoBtn").disabled=false;$("photoInput").value="";return;}
+    if(files.length>max){
+      alert("El documento tiene mas paginas de las que puedo leer de una vez. Voy a leer solo las primeras "+max+".");
+      files=files.slice(0,max);
+    }
+    $("photoStatus").textContent="Leyendo el documento...";
     const PROMPT=[
       "Eres un asistente de bodega agricola en Colombia. En las imagenes hay una factura o cotizacion de insumos agricolas.",
       "Cada renglon tiene el producto, la cantidad y el valor impresos. Junto a la descripcion hay fechas escritas A MANO con esfero:",
@@ -666,6 +775,42 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     btn.textContent=txt;btn.disabled=false;
   };
 
+
+  // ---------- conectar con Google ----------
+  $("syncBtn").onclick=()=>{
+    $("syncUrl").value=api;
+    $("syncInfo").textContent=api?("Conectado. "+items.length+" lotes en este equipo."):"Todavia no esta conectado: los datos solo se guardan en este equipo.";
+    $("dlgSync").showModal();
+  };
+  $("syncClose").onclick=()=>$("dlgSync").close();
+  $("syncOff").onclick=()=>{
+    api="";try{localStorage.removeItem("venc_api");}catch(e){}
+    setSync("Desconectado de Google. Se guarda solo en este equipo.");
+    $("dlgSync").close();
+  };
+  $("syncSave").onclick=async()=>{
+    const u=$("syncUrl").value.trim();
+    if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(u)){
+      alert("Esa no parece la URL correcta. Debe empezar por https://script.google.com/macros/s/ y terminar en /exec");return;
+    }
+    api=u;try{localStorage.setItem("venc_api",u);}catch(e){}
+    $("dlgSync").close();
+    setSync("Conectando...");
+    try{
+      const j=await apiCall({accion:"getAll"});
+      const enNube=(j.lotes||[]).length;
+      if(!enNube&&items.length&&confirm("La hoja de Google esta vacia y aqui tienes "+items.length+" lotes. ¿Los subo a Google?")){
+        await apiCall({accion:"guardarVarios",lotes:items.map(it=>Object.assign({id:it.id},clean(it)))});
+      }
+      await sincronizar();
+      setInterval(()=>{if(!document.hidden)sincronizar(true);},15000);
+      document.addEventListener("visibilitychange",()=>{if(!document.hidden)sincronizar(true);});
+      $("syncBtn").textContent="Sincronización con Google";
+    }catch(e){
+      setSync("No pude conectar. Revisa que la aplicacion web este publicada para 'Cualquier persona'.");
+      alert("No pude conectar con esa URL. Revisa que al implementarla hayas puesto acceso para 'Cualquier persona'.");
+    }
+  };
 
   // ---------- exportar / importar ----------
   $("expBtn").onclick=()=>{$("ioText").value=JSON.stringify(items.map(clean),null,1);$("ioCopy").textContent="Copiar";$("dlgIO").showModal();};
