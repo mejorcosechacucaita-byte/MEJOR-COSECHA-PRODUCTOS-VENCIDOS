@@ -140,6 +140,9 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
 .rev .r1{display:grid;grid-template-columns:auto 1fr;gap:.5rem;align-items:center}
 .rev .r2{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
 .rev .r3{display:grid;grid-template-columns:1.2fr 1fr .7fr;gap:.4rem}
+.fila{display:grid;grid-template-columns:2.4fr .8fr .9fr 1.1fr .8fr .7fr;gap:.35rem;padding:.2rem 0}
+.fila input,.fila select{padding:.35rem .4rem;font-size:.9rem}
+@media (max-width:640px){.fila{grid-template-columns:1fr 1fr;}}
 .rev input,.rev select{padding:.35rem .45rem;font-size:.9rem}
 .rev.falta{background:var(--orange-soft);border-radius:8px;padding:.6rem;border-top:0}
 .revbox{max-height:52vh;overflow:auto}
@@ -174,9 +177,17 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
   </div>
 
   <div id="photoWrap" style="margin-bottom:.75rem">
+    <button class="btn ghost" id="rapidoBtn">Digitar factura rápido</button>
+    <button class="btn ghost" id="ocrBtn">Leer factura con Google</button>
+    <input type="file" id="ocrInput" accept="image/*" hidden>
     <button class="btn ghost" id="photoBtn">Adjuntar factura (foto o PDF)</button>
     <span class="status" id="photoStatus"></span>
     <input type="file" id="photoInput" accept="image/*,application/pdf,.pdf" multiple hidden>
+  </div>
+
+  <div class="tools" id="filtros">
+    <select id="fProvFiltro" aria-label="Filtrar por proveedor" style="flex:1 1 180px;width:auto"><option value="">Todos los proveedores</option></select>
+    <select id="fDocFiltro" aria-label="Filtrar por documento" style="flex:1 1 180px;width:auto"><option value="">Todas las facturas</option></select>
   </div>
 
   <div class="views" role="group" aria-label="Forma de ver la lista">
@@ -198,6 +209,8 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     <button class="icon" id="expBtn">Copia de seguridad</button>
     <button class="icon" id="syncBtn">Conectar con Google Sheets</button>
     <button class="icon" id="dupBtn">Quitar duplicados</button>
+    <button class="icon" id="histBtn">Historial de salidas</button>
+    <button class="icon" id="icsBtn">Recordatorios de calendario</button>
     <span class="status" id="syncStatus"></span>
   </div>
 </div>
@@ -229,6 +242,10 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
       </div>
       <p class="hint">Si no pones el día, se toma el último día del mes.</p>
     </fieldset>
+    <div class="row2">
+      <label>Precio unitario<input id="fPrecio" type="number" min="0" step="1" inputmode="numeric" placeholder="Ej. 42900"></label>
+      <label>Ubicación en bodega<input id="fUbic" autocomplete="off" placeholder="Ej. Estante 3"></label>
+    </div>
     <label>Nota<input id="fNota" autocomplete="off"></label>
     <div class="btns">
       <button type="button" class="btn ghost" id="cancel">Cancelar</button>
@@ -254,11 +271,58 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
   </form>
 </dialog>
 
+<dialog id="dlgRapido">
+  <form class="sheet" method="dialog" style="width:min(840px,96vw)">
+    <h2>Digitar factura</h2>
+    <p class="hint">Escribe un renglón por producto. Con Enter pasas al siguiente campo y, al final de la fila, se crea otra.</p>
+    <div class="row2">
+      <label>Proveedor<input id="rProv" list="dlProveedores" autocomplete="off"></label>
+      <label>Factura o remisión<input id="rDoc" autocomplete="off"></label>
+    </div>
+    <div class="row2">
+      <label>Fecha de ingreso<input id="rIngreso" type="date"></label>
+      <label>Ubicación en bodega<input id="rUbic" autocomplete="off" placeholder="opcional"></label>
+    </div>
+    <div class="revbox" id="rapidoBox"></div>
+    <button type="button" class="icon" id="rMas">Agregar otro renglón</button>
+    <div class="btns">
+      <button type="button" class="btn ghost" id="rCancel">Cancelar</button>
+      <button type="button" class="btn" id="rSave">Guardar todo</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgSalida">
+  <form class="sheet" method="dialog">
+    <h2 id="salTitulo">Registrar salida</h2>
+    <p class="hint" id="salInfo"></p>
+    <div class="row2">
+      <label>Cantidad que sale<input id="salCant" type="number" min="1" step="1" inputmode="numeric"></label>
+      <label>Fecha<input id="salFecha" type="date"></label>
+    </div>
+    <label>Motivo o destino<input id="salNota" autocomplete="off" placeholder="Ej. venta, aplicación lote 4"></label>
+    <p class="hint">Se descuenta primero del lote que vence más pronto, que es como se debe despachar.</p>
+    <div class="btns">
+      <button type="button" class="btn ghost" id="salCancel">Cancelar</button>
+      <button type="button" class="btn" id="salSave">Registrar salida</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgHist">
+  <form class="sheet" method="dialog">
+    <h2>Historial de salidas</h2>
+    <div class="revbox" id="histBox"></div>
+    <div class="btns"><button type="button" class="btn" id="histClose">Cerrar</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlgSync">
   <form class="sheet" method="dialog">
     <h2>Sincronizar entre equipos</h2>
     <p class="hint">Pega aquí la URL de la aplicación web de Google Apps Script (la que termina en /exec). Con eso, este equipo lee y escribe en tu hoja de Google y todos los equipos ven lo mismo.</p>
     <label>URL de la aplicación web<input id="syncUrl" placeholder="https://script.google.com/macros/s/..../exec" autocomplete="off"></label>
+    <label>Clave para registrar (solo si la pusiste en el Code.gs)<input id="syncClave" autocomplete="off" placeholder="déjala vacía si no usas clave"></label>
     <p class="hint" id="syncInfo"></p>
     <div class="btns">
       <button type="button" class="btn ghost" id="syncOff">Desconectar</button>
@@ -297,6 +361,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
   let col=null;
   let filter=null, editingId=null, view="producto";
   let page=1; const PAGE=10; const abiertos=new Set();
+  let movs=[]; try{movs=JSON.parse(localStorage.getItem("venc_movs")||"[]");}catch(e){movs=[];}
+  let clave=""; try{clave=localStorage.getItem("venc_clave")||"";}catch(e){}
+  let fProv="", fDoc="", salProducto=null;
+  const plata=n=>"$ "+Math.round(n).toLocaleString("es-CO");
   let umbral=6;
 
   try{const u=localStorage.getItem("venc_umbral"); if(u) umbral=+u;}catch(e){}
@@ -338,12 +406,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
   }
 
   function matches(it,q){
+    if(fProv&&key(it.proveedor)!==fProv)return false;
+    if(fDoc&&key(it.documento)!==fDoc)return false;
     if(!q)return true;
     return key(it.nombre).includes(q)||key(it.proveedor).includes(q)||key(it.documento).includes(q);
   }
 
   function lotMeta(it){
-    return [it.proveedor, it.ingreso?"llegó "+fmtShort(it.ingreso):"", it.documento, it.nota].filter(Boolean).map(esc).join(" / ");
+    return [it.proveedor, it.ingreso?"llegó "+fmtShort(it.ingreso):"", it.documento, it.ubicacion, it.nota,
+      it.precio?plata(it.precio)+" c/u":""].filter(Boolean).map(esc).join(" / ");
   }
 
   function renderFecha(list){
@@ -384,7 +455,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
             <div class="lmeta">${lotMeta(it)}</div></div>
           <div style="text-align:right"><div class="qty">${esc(qty(it.cantidad,it.unidad))}</div>
             <div class="actions"><button class="icon" data-edit="${esc(it.id)}">Editar</button><button class="icon" data-del="${esc(it.id)}">Borrar</button></div></div></div>`;
-      }).join("")+`<button class="icon addlot" data-addlot="${esc(g.name)}">Registrar otra llegada de este producto</button>`;
+      }).join("")+`<button class="icon addlot" data-addlot="${esc(g.name)}">Registrar otra llegada</button>
+        <button class="icon addlot" data-salida="${esc(g.name)}">Registrar salida de este producto</button>`;
       return `<div class="group ${g.worst}${open?" open":""}"><div class="bar"></div><div>
         <button class="ghead" data-toggle="${esc(g.k)}" aria-expanded="${open}">
           <span class="gleft"><span class="chev" aria-hidden="true">▶</span>
@@ -430,6 +502,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
     $("dlProductos").innerHTML=prods.map(p=>`<option value="${esc(p)}">`).join("");
     $("dlProveedores").innerHTML=provs.map(p=>`<option value="${esc(p)}">`).join("");
 
+    const provs2=[...new Map(items.filter(it=>it.proveedor).map(it=>[key(it.proveedor),it.proveedor])).values()].sort();
+    const docs2=[...new Map(items.filter(it=>it.documento).map(it=>[key(it.documento),it.documento])).values()].sort();
+    $("fProvFiltro").innerHTML='<option value="">Todos los proveedores</option>'+provs2.map(p=>`<option value="${esc(key(p))}"${fProv===key(p)?" selected":""}>${esc(p)}</option>`).join("");
+    $("fDocFiltro").innerHTML='<option value="">Todas las facturas</option>'+docs2.map(p=>`<option value="${esc(key(p))}"${fDoc===key(p)?" selected":""}>${esc(p)}</option>`).join("");
+
     const urgent=sorted.filter(it=>group(status(it))==="red");
     $("alert").innerHTML=urgent.length?`<div class="alert" role="alert"><p>${urgent.length===1?"1 lote vence":urgent.length+" lotes vencen"} en 30 días o menos</p><ul>${
       urgent.slice(0,6).map(it=>`<li>${esc(it.nombre)} (${esc(qty(it.cantidad,it.unidad))}): ${fmt(it.vence)}, ${daysText(daysLeft(it.vence)).toLowerCase()}</li>`).join("")
@@ -442,7 +519,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
   function loadLocal(){try{const r=localStorage.getItem(LS_KEY);items=r?JSON.parse(r):[];}catch(e){items=[];}}
   function newId(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
   function clean(it){return {nombre:it.nombre,proveedor:it.proveedor||"",ingreso:it.ingreso||"",documento:it.documento||"",
-    cantidad:Number(it.cantidad)||0,unidad:it.unidad||"und",vence:it.vence||"",nota:it.nota||"",revisar:!!it.revisar};}
+    cantidad:Number(it.cantidad)||0,unidad:it.unidad||"und",vence:it.vence||"",nota:it.nota||"",revisar:!!it.revisar,
+    precio:Number(it.precio)||0,ubicacion:it.ubicacion||""};}
 
   // ---- sincronizacion con Google Sheets (Apps Script) ----
   let api=API_URL||"";
@@ -451,6 +529,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
   const savePend=()=>{try{localStorage.setItem("venc_pend",JSON.stringify(pend));}catch(e){}};
   function setSync(t){$("syncStatus").textContent=t;}
   function apiCall(payload){
+    if(clave)payload=Object.assign({clave:clave},payload);
     return fetch(api,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
       .then(r=>r.json()).then(j=>{if(!j||!j.ok)throw new Error((j&&j.error)||"respuesta invalida");return j;});
   }
@@ -477,7 +556,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
       }
       items=(j.lotes||[]).map(r=>({id:String(r.id),nombre:String(r.nombre||""),proveedor:r.proveedor||"",
         ingreso:r.ingreso||"",documento:r.documento||"",cantidad:Number(r.cantidad)||0,unidad:r.unidad||"und",
-        vence:r.vence||"",nota:r.nota||"",revisar:r.revisar===true||r.revisar==="TRUE"||r.revisar==="true"}));
+        vence:r.vence||"",nota:r.nota||"",revisar:r.revisar===true||r.revisar==="TRUE"||r.revisar==="true",
+        precio:Number(r.precio)||0,ubicacion:r.ubicacion||""}));
+      movs=(j.movimientos||[]).map(m=>({id:String(m.id),fecha:m.fecha||"",nombre:m.nombre||"",cantidad:Number(m.cantidad)||0,unidad:m.unidad||"und",nota:m.nota||""}));
+      try{localStorage.setItem("venc_movs",JSON.stringify(movs));}catch(e){}
       saveLocal();render();
       const h=new Date();
       setSync("En linea. Ultima sincronizacion "+String(h.getHours()).padStart(2,"0")+":"+String(h.getMinutes()).padStart(2,"0"));
@@ -541,6 +623,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
     $("fCant").value=it?it.cantidad:"";
     $("fUnidad").value=src?(src.unidad||"und"):"und";
     $("fNota").value=it?(it.nota||""):"";
+    $("fPrecio").value=it?(it.precio||""):(src?(src.precio||""):"");
+    $("fUbic").value=it?(it.ubicacion||""):(src?(src.ubicacion||""):"");
     const d=it&&parse(it.vence);
     $("fMes").value=d?String(d.getMonth()+1):"";
     $("fAnio").value=d?d.getFullYear():"";
@@ -565,7 +649,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
     const existing=items.find(x=>key(x.nombre)===key(nombre));
     const it={id:editingId||newId(),nombre:existing?existing.nombre:nombre,proveedor:$("fProv").value.trim(),
       ingreso:$("fIngreso").value,documento:$("fDoc").value.trim(),cantidad:Number($("fCant").value)||0,
-      unidad:$("fUnidad").value,vence,nota:$("fNota").value.trim(),revisar:false};
+      unidad:$("fUnidad").value,vence,nota:$("fNota").value.trim(),revisar:false,
+      precio:Number($("fPrecio").value)||0,ubicacion:$("fUbic").value.trim()};
     $("dlg").close();upsert(it);
   });
   $("list").addEventListener("click",e=>{
@@ -573,6 +658,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
     if(ed)openForm(items.find(x=>x.id===ed.dataset.edit));
     if(dl){const it=items.find(x=>x.id===dl.dataset.del);if(it&&confirm("¿Borrar este lote de "+it.nombre+" ("+qty(it.cantidad,it.unidad)+", vence "+fmt(it.vence)+")?"))remove(it.id);}
     if(ad)openForm(null,ad.dataset.addlot);
+    const sa=e.target.closest("[data-salida]");
+    if(sa){abrirSalida(sa.dataset.salida);return;}
     const tg=e.target.closest("[data-toggle]"),pg=e.target.closest("[data-page]");
     if(tg&&!ed&&!dl&&!ad){const k=tg.dataset.toggle;abiertos.has(k)?abiertos.delete(k):abiertos.add(k);render();}
     if(pg){page+=pg.dataset.page==="sig"?1:-1;if(page<1)page=1;render();window.scrollTo({top:0,behavior:"smooth"});}
@@ -580,6 +667,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
   document.querySelectorAll(".stat").forEach(b=>b.onclick=()=>{filter=filter===b.dataset.f?null:b.dataset.f;page=1;render();});
   document.querySelectorAll(".views button").forEach(b=>b.onclick=()=>{view=b.dataset.v;page=1;try{localStorage.setItem("venc_vista",view);}catch(e){}render();});
   $("q").oninput=()=>{page=1;render();};
+  $("fProvFiltro").onchange=()=>{fProv=$("fProvFiltro").value;page=1;render();};
+  $("fDocFiltro").onchange=()=>{fDoc=$("fDocFiltro").value;page=1;render();};
   $("umbral").onchange=()=>{umbral=+$("umbral").value;try{localStorage.setItem("venc_umbral",umbral);}catch(e){}render();};
 
   // ---------- avisos del navegador ----------
@@ -617,8 +706,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
       $("photoStatus").textContent="";
     }).catch(()=>{});
   }
+  // si a los 3 segundos no hay lector (p. ej. en GitHub), se cambia el boton por un aviso discreto
+  setTimeout(()=>{
+    if(sampler)return;
+    $("photoBtn").style.display="none";
+    $("photoStatus").textContent="Para leer la factura con Claude, abre esta misma bodega en la app de Claude.";
+  },3000);
   $("photoBtn").onclick=()=>{
-    if(!sampler){alert("La lectura por foto solo funciona en la app de Claude y necesita unos segundos despues de abrir la pagina. Si acabas de abrirla, espera un momento y vuelve a tocar el boton. En la version de GitHub no esta disponible: en ese caso mandame la foto por el chat.");return;}
+    if(!sampler){$("photoStatus").textContent="Esta función solo está disponible en la app de Claude.";return;}
     $("photoInput").click();
   };
   async function pdfAImagenes(file,max){
@@ -789,7 +884,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
 
   // ---------- conectar con Google ----------
   $("syncBtn").onclick=()=>{
-    $("syncUrl").value=api;
+    $("syncUrl").value=api;$("syncClave").value=clave;
     $("syncInfo").textContent=api?("Conectado. "+items.length+" lotes en este equipo."):"Todavia no esta conectado: los datos solo se guardan en este equipo.";
     $("dlgSync").showModal();
   };
@@ -804,7 +899,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
     if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(u)){
       alert("Esa no parece la URL correcta. Debe empezar por https://script.google.com/macros/s/ y terminar en /exec");return;
     }
-    api=u;col=null;try{localStorage.setItem("venc_api",u);}catch(e){}
+    api=u;col=null;clave=$("syncClave").value.trim();
+    try{localStorage.setItem("venc_api",u);localStorage.setItem("venc_clave",clave);}catch(e){}
     $("dlgSync").close();
     setSync("Conectando...");
     try{
@@ -821,6 +917,173 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-
       setSync("No pude conectar. Revisa que la aplicacion web este publicada para 'Cualquier persona'.");
       alert("No pude conectar con esa URL. Revisa que al implementarla hayas puesto acceso para 'Cualquier persona'.");
     }
+  };
+
+  // ---------- digitar factura rapido ----------
+  const UNIDADES=["und","cajas","bultos","kg","lt"];
+  function mesOptions(sel){return MESES.map((m,i)=>`<option value="${i+1}"${sel===i+1?" selected":""}>${m.slice(0,3)}</option>`).join("");}
+  function filaRapida(){
+    const div=document.createElement("div");
+    div.className="fila";
+    div.innerHTML=`<input class="p" list="dlProductos" placeholder="Producto" autocomplete="off">
+      <input class="c" type="number" min="0" placeholder="Cant." inputmode="numeric">
+      <select class="u">${UNIDADES.map(u=>`<option>${u}</option>`).join("")}</select>
+      <select class="m"><option value="">Mes</option>${mesOptions(0)}</select>
+      <input class="y" type="number" placeholder="Año" inputmode="numeric">
+      <input class="d" type="number" placeholder="Día" inputmode="numeric">`;
+    return div;
+  }
+  function nuevaFila(foco){
+    const f=filaRapida();
+    $("rapidoBox").appendChild(f);
+    if(foco)f.querySelector(".p").focus();
+    return f;
+  }
+  $("rapidoBtn").onclick=()=>{
+    $("rapidoBox").innerHTML="";
+    for(let i=0;i<6;i++)nuevaFila(false);
+    $("rIngreso").value=iso(today());
+    $("dlgRapido").showModal();
+    $("rProv").focus();
+  };
+  $("rMas").onclick=()=>nuevaFila(true);
+  $("rCancel").onclick=()=>$("dlgRapido").close();
+  $("rapidoBox").addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    e.preventDefault();
+    const campos=[...$("rapidoBox").querySelectorAll("input,select")];
+    const i=campos.indexOf(e.target);
+    if(i<0)return;
+    if(i===campos.length-1){const f=nuevaFila(true);return;}
+    campos[i+1].focus();
+  });
+  $("rSave").onclick=async()=>{
+    const prov=$("rProv").value.trim(),doc=$("rDoc").value.trim(),ing=$("rIngreso").value,ubic=$("rUbic").value.trim();
+    const filas=[...$("rapidoBox").querySelectorAll(".fila")];
+    let n=0,sinFecha=0;
+    for(const f of filas){
+      const nombre=f.querySelector(".p").value.trim(); if(!nombre)continue;
+      const cant=Number(f.querySelector(".c").value)||0;
+      const mes=+f.querySelector(".m").value,anio=+f.querySelector(".y").value,dia=+f.querySelector(".d").value;
+      let vence="";
+      if(mes&&anio){const last=new Date(anio,mes,0).getDate();
+        vence=anio+"-"+String(mes).padStart(2,"0")+"-"+String(dia?Math.min(dia,last):last).padStart(2,"0");}
+      else sinFecha++;
+      const ex=items.find(x=>key(x.nombre)===key(nombre));
+      await upsert({id:newId(),nombre:ex?ex.nombre:nombre,proveedor:prov,ingreso:ing,documento:doc,
+        cantidad:cant,unidad:f.querySelector(".u").value,vence,nota:"",revisar:!vence,precio:0,ubicacion:ubic});
+      n++;
+    }
+    $("dlgRapido").close();page=1;render();
+    alert(n?("Guarde "+n+" renglones."+(sinFecha?" "+sinFecha+" quedaron sin fecha, marcados como revisar.":"")):"No habia renglones con producto.");
+  };
+
+  // ---------- leer factura con Google (OCR de Drive) ----------
+  if(!api)$("ocrBtn").style.display="none";
+  $("ocrBtn").onclick=()=>{
+    if(!api){alert("Primero conecta la app con tu hoja de Google.");return;}
+    $("ocrInput").click();
+  };
+  $("ocrInput").onchange=async()=>{
+    const f=$("ocrInput").files[0]; if(!f)return;
+    if(f.size>6000000){alert("La foto es muy pesada. Toma una mas liviana o reducela.");$("ocrInput").value="";return;}
+    $("ocrBtn").disabled=true;const txt0=$("ocrBtn").textContent;$("ocrBtn").textContent="Leyendo con Google...";
+    try{
+      const b64=await new Promise((res,rej)=>{const r=new FileReader();
+        r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(f);});
+      const j=await apiCall({accion:"ocr",nombre:f.name||"factura.jpg",mime:f.type||"image/jpeg",datos:b64});
+      const lotes=renglonesDeTexto(j.texto||"");
+      if(!lotes.length)alert("Google no reconocio renglones en esa foto. Prueba con mas luz o usa Digitar factura rapido.");
+      else openReview(lotes,"","");
+    }catch(e){
+      alert("No pude leer la foto con Google: "+((e&&e.message)||"error")+
+        ". Revisa que en Apps Script hayas activado el servicio Drive API y vuelto a implementar.");
+    }
+    $("ocrBtn").disabled=false;$("ocrBtn").textContent=txt0;$("ocrInput").value="";
+  };
+
+  /* De un texto suelto saca renglones con producto y cantidad.
+     Las fechas manuscritas casi nunca las lee, por eso quedan para digitar. */
+  function renglonesDeTexto(texto){
+    const malas=/(total|subtotal|iva|retefte|factura|cliente|nit|direccion|ciudad|correo|telefono|vendedor|codigo|descripcion|unid|cant|valor|firma|observaciones|pago|banco)/i;
+    const out=[];
+    texto.split("\n").forEach(linea=>{
+      const l=linea.replace(/\s+/g," ").trim();
+      if(l.length<6||malas.test(l))return;
+      const nums=l.match(/\b\d{1,4}\b/g);
+      if(!nums)return;
+      const nombre=l.replace(/[\d.,$]+\s*$/,"").replace(/\s+\d{1,4}\s*$/,"").trim();
+      if(nombre.length<4||!/[a-zA-Z]{3}/.test(nombre))return;
+      const cant=Number(nums[nums.length-1])||0;
+      out.push({nombre:nombre.slice(0,70),cantidad:cant>0&&cant<10000?cant:0,unidad:"und",
+        anio:0,mes:0,dia:null,nota:"Escribe la fecha de vencimiento",revisar:true});
+    });
+    return out.slice(0,60);
+  }
+
+  // ---------- salidas (descuenta del lote que vence primero) ----------
+  function abrirSalida(nombre){
+    const lotes=items.filter(x=>key(x.nombre)===key(nombre)).sort(byDate);
+    if(!lotes.length)return;
+    salProducto=lotes[0].nombre;
+    const tot={};lotes.forEach(it=>{const u=it.unidad||"und";tot[u]=(tot[u]||0)+(Number(it.cantidad)||0);});
+    $("salTitulo").textContent="Salida de "+salProducto;
+    $("salInfo").textContent="Tienes "+Object.entries(tot).map(([u,n])=>qty(n,u)).join(" + ")+
+      ". El mas proximo vence el "+fmt(lotes[0].vence)+".";
+    $("salCant").value="";$("salNota").value="";$("salFecha").value=iso(today());
+    $("dlgSalida").showModal();
+  }
+  $("salCancel").onclick=()=>$("dlgSalida").close();
+  $("salSave").onclick=async()=>{
+    let n=Number($("salCant").value)||0;
+    if(n<=0){alert("Pon la cantidad que sale.");return;}
+    const lotes=items.filter(x=>key(x.nombre)===key(salProducto)).sort(byDate);
+    const hay=lotes.reduce((a,b)=>a+(Number(b.cantidad)||0),0);
+    if(n>hay){alert("Solo tienes "+hay+" y estas sacando "+n+". Corrige la cantidad.");return;}
+    const fecha=$("salFecha").value||iso(today()), nota=$("salNota").value.trim();
+    const unidad=lotes[0].unidad||"und", salida=n;
+    $("dlgSalida").close();
+    for(const it of lotes){
+      if(n<=0)break;
+      const hayAqui=Number(it.cantidad)||0;
+      if(!hayAqui)continue;
+      const saca=Math.min(hayAqui,n); n-=saca;
+      if(saca===hayAqui)await remove(it.id);
+      else await upsert(Object.assign({},it,{cantidad:hayAqui-saca}));
+    }
+    const mov={id:newId(),fecha,nombre:salProducto,cantidad:salida,unidad,nota};
+    movs.unshift(mov);try{localStorage.setItem("venc_movs",JSON.stringify(movs.slice(0,300)));}catch(e){}
+    if(api&&!col){try{await apiCall({accion:"movimiento",movimiento:mov});}catch(e){}}
+    render();
+  };
+
+  // ---------- historial ----------
+  $("histBtn").onclick=()=>{
+    $("histBox").innerHTML=movs.length?movs.slice(0,100).map(m=>
+      `<div class="rev"><div><b>${esc(m.nombre)}</b> — salieron ${esc(qty(m.cantidad,m.unidad))}</div>
+       <div class="lmeta">${esc(fmtShort(m.fecha)||m.fecha)}${m.nota?" · "+esc(m.nota):""}</div></div>`).join("")
+      :'<p class="hint">Todavia no has registrado salidas.</p>';
+    $("dlgHist").showModal();
+  };
+  $("histClose").onclick=()=>$("dlgHist").close();
+
+  // ---------- recordatorios de calendario (.ics) ----------
+  $("icsBtn").onclick=async()=>{
+    const con=items.filter(it=>it.vence);
+    if(!con.length){alert("No hay lotes con fecha de vencimiento.");return;}
+    const pad=v=>String(v).padStart(2,"0");
+    const dstamp=d=>d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());
+    const lineas=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Bodega//Vencimientos//ES","CALSCALE:GREGORIAN"];
+    con.forEach(it=>{
+      const v=parse(it.vence); const aviso=new Date(v); aviso.setDate(aviso.getDate()-30);
+      const fin=new Date(aviso); fin.setDate(fin.getDate()+1);
+      const txt=("Vence "+it.nombre+" ("+qty(it.cantidad,it.unidad)+")").replace(/[,;\\]/g,"");
+      lineas.push("BEGIN:VEVENT","UID:"+it.id+"@bodega","DTSTAMP:"+dstamp(new Date())+"T090000Z",
+        "DTSTART;VALUE=DATE:"+dstamp(aviso),"DTEND;VALUE=DATE:"+dstamp(fin),
+        "SUMMARY:"+txt,"DESCRIPTION:Vence el "+fmtShort(it.vence)+(it.ubicacion?". Ubicacion: "+it.ubicacion:""),"END:VEVENT");
+    });
+    lineas.push("END:VCALENDAR");
+    await entregar("vencimientos.ics",new Blob([lineas.join("\r\n")],{type:"text/calendar"}));
   };
 
   // ---------- quitar duplicados ----------
