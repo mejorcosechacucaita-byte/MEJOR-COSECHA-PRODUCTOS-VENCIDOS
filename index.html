@@ -281,6 +281,13 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
 </dialog>
 
 <script>
+/* ===================================================================
+   AQUI VA LA URL DE TU HOJA DE GOOGLE (Apps Script, termina en /exec).
+   Pegala entre las comillas y guarda. Si la dejas vacia, cada equipo
+   tendra que conectarla a mano desde el boton del pie de la pagina.
+   =================================================================== */
+const API_URL = "https://script.google.com/macros/s/AKfycbyUtuqHwkc0W64NY9_kqT_-gy1kDZgmbkrqG_aSRWPrpCT95gRdi3T0i7uRyUS3q19I/exec";
+
 (function(){
   const MESES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
   const LS_KEY="vencimientos_productos_v1";
@@ -437,8 +444,6 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     cantidad:Number(it.cantidad)||0,unidad:it.unidad||"und",vence:it.vence||"",nota:it.nota||"",revisar:!!it.revisar};}
 
   // ---- sincronizacion con Google Sheets (Apps Script) ----
-  // Si prefieres dejarla fija en el archivo, escribe aqui la URL que termina en /exec:
-  const API_URL="";
   let api=API_URL||"";
   try{api=api||localStorage.getItem("venc_api")||"";}catch(e){}
   let pend=[]; try{pend=JSON.parse(localStorage.getItem("venc_pend")||"[]");}catch(e){pend=[];}
@@ -463,6 +468,12 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     try{
       await enviarPendientes();
       const j=await apiCall({accion:"getAll"});
+      if(!(j.lotes||[]).length && items.length){
+        // la hoja esta vacia y aqui si hay datos: subirlos en vez de borrarlos
+        await apiCall({accion:"guardarVarios",lotes:items.map(it=>Object.assign({id:it.id},clean(it)))});
+        setSync("En linea. Subi "+items.length+" lotes a Google.");
+        sincronizando=false;return;
+      }
       items=(j.lotes||[]).map(r=>({id:String(r.id),nombre:String(r.nombre||""),proveedor:r.proveedor||"",
         ingreso:r.ingreso||"",documento:r.documento||"",cantidad:Number(r.cantidad)||0,unidad:r.unidad||"und",
         vence:r.vence||"",nota:r.nota||"",revisar:r.revisar===true||r.revisar==="TRUE"||r.revisar==="true"}));
@@ -502,16 +513,15 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     saveLocal();
   }
   render();
-  if(api&&!(window.claude&&typeof window.claude.use==="function")){
+  if(api){
     $("syncBtn").textContent="Sincronización con Google";
     sincronizar();
     setInterval(()=>{if(!document.hidden)sincronizar(true);},15000);
     document.addEventListener("visibilitychange",()=>{if(!document.hidden)sincronizar(true);});
   }
   if(window.claude&&typeof window.claude.use==="function"){
-    $("syncBtn").style.display="none";
     window.claude.use("db").then(d=>{
-      if(!d)return;
+      if(!d||api)return;
       col=d.collection("productos");
       col.onSnapshot(snap=>{items=snap.docs.map(doc=>Object.assign({id:doc.id},doc.data()));render();},err=>console.warn(err));
     }).catch(()=>{});
@@ -793,7 +803,7 @@ textarea{font:inherit;font-size:.8rem;width:100%;min-height:160px;border:1px sol
     if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(u)){
       alert("Esa no parece la URL correcta. Debe empezar por https://script.google.com/macros/s/ y terminar en /exec");return;
     }
-    api=u;try{localStorage.setItem("venc_api",u);}catch(e){}
+    api=u;col=null;try{localStorage.setItem("venc_api",u);}catch(e){}
     $("dlgSync").close();
     setSync("Conectando...");
     try{
